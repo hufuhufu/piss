@@ -1,0 +1,11 @@
+[package]
+name = "cliptest"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clipboard-win = "4.4.1"
+opencv = "0.63.0"
+anyhow = "1.0.56"
