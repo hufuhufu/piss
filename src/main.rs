@@ -110,10 +110,10 @@ fn main() -> Result<()> {
                     imgproc::INTER_CUBIC,
                 ) {
                     Ok(()) => rm,
-                    Err(_) => Mat::default(),
+                    Err(_) => mat,
                 }
             } else {
-                Mat::default()
+                mat
             }
         })
         .collect();
