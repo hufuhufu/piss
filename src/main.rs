@@ -1,50 +1,42 @@
-use std::collections::HashMap;
-
 use anyhow::Result;
+use std::collections::HashMap;
 // use clipboard_win::{formats, get_clipboard};
 use opencv::{
-    core::{no_array, norm2, Point, Rect, Scalar, Size, Vector as cVec, NORM_L2},
+    core::{no_array, norm2, Point, Rect, Size, Vector as cVec, NORM_L2},
     highgui, imgcodecs,
     imgproc::{
-        self, bounding_rect, find_contours, rectangle, resize, threshold, CHAIN_APPROX_SIMPLE,
-        LINE_8, RETR_EXTERNAL, THRESH_BINARY_INV,
+        self, bounding_rect, find_contours, resize, threshold, CHAIN_APPROX_SIMPLE, RETR_EXTERNAL,
+        THRESH_BINARY_INV,
     },
     prelude::*,
 };
+use rust_embed::RustEmbed;
+
+#[derive(RustEmbed)]
+#[folder = "pqh/images/items/"]
+struct ItemAssets;
 
 fn main() -> Result<()> {
-    let mut ss = imgcodecs::imread("sss.png", imgcodecs::IMREAD_ANYCOLOR)?;
+    // let clip = get_clipboard(formats::Bitmap).expect("Get bitmap from clipboard");
+    // let ss_vec: cVec<u8> = cVec::from(clip);
+    // let mut ss_mat = imgcodecs::imdecode(&ss_vec, imgcodecs::IMREAD_GRAYSCALE)?;
+    // let ss_mat = imgcodecs::imread("ss.png", imgcodecs::IMREAD_GRAYSCALE)?;
+
+    let ss = imgcodecs::imread("sss.png", imgcodecs::IMREAD_ANYCOLOR)?;
     let ss_gray = imgcodecs::imread("sss.png", imgcodecs::IMREAD_GRAYSCALE)?;
 
-    let mut equip_hmap: HashMap<&str, Mat> = HashMap::new();
-    equip_hmap.insert(
-        "114011",
-        imgcodecs::imread("114011.png", imgcodecs::IMREAD_ANYCOLOR)?,
-    );
-    equip_hmap.insert(
-        "114341",
-        imgcodecs::imread("114341.png", imgcodecs::IMREAD_ANYCOLOR)?,
-    );
-    equip_hmap.insert(
-        "104042",
-        imgcodecs::imread("104042.png", imgcodecs::IMREAD_ANYCOLOR)?,
-    );
-    equip_hmap.insert(
-        "114252",
-        imgcodecs::imread("114252.png", imgcodecs::IMREAD_ANYCOLOR)?,
-    );
-    equip_hmap.insert(
-        "114222",
-        imgcodecs::imread("114222.png", imgcodecs::IMREAD_ANYCOLOR)?,
-    );
-    equip_hmap.insert(
-        "124131",
-        imgcodecs::imread("124131.png", imgcodecs::IMREAD_ANYCOLOR)?,
-    );
-    equip_hmap.insert(
-        "124312",
-        imgcodecs::imread("124312.png", imgcodecs::IMREAD_ANYCOLOR)?,
-    );
+    let mut equip_hmap: HashMap<String, Mat> = HashMap::new();
+    for filename in ItemAssets::iter() {
+        let file: cVec<u8> = ItemAssets::get(filename.as_ref())
+            .unwrap()
+            .data
+            .into_owned()
+            .into();
+        let mat = imgcodecs::imdecode(&file, imgcodecs::IMREAD_ANYCOLOR)?;
+        let id = filename.trim_end_matches(|c: char| !c.is_numeric());
+
+        equip_hmap.insert(id.to_owned(), mat);
+    }
 
     let mut thresh = Mat::default();
     threshold(&ss_gray, &mut thresh, 130.0, 255.0, THRESH_BINARY_INV)?;
@@ -85,9 +77,6 @@ fn main() -> Result<()> {
         Some(h) => *h,
         None => (0, 0),
     };
-    println!("{:#?}", rect_freq);
-    println!("{:?}", rect_most_freq);
-    println!("{}", rects.len());
 
     let equips: cVec<Mat> = rects
         .iter()
@@ -101,16 +90,19 @@ fn main() -> Result<()> {
         .map(|mat| {
             if mat.cols() != 128 || mat.rows() != 128 {
                 let mut rm = Mat::default();
-                match resize(
+                if resize(
                     &mat,
                     &mut rm,
                     Size::new(128, 128),
                     0.0,
                     0.0,
                     imgproc::INTER_CUBIC,
-                ) {
-                    Ok(()) => rm,
-                    Err(_) => mat,
+                )
+                .is_ok()
+                {
+                    rm
+                } else {
+                    mat
                 }
             } else {
                 mat
@@ -118,24 +110,23 @@ fn main() -> Result<()> {
         })
         .collect();
 
-    // for (i, eq) in equips.iter().enumerate() {
-    //     println!("Equip {}", i);
-    // }
-
-    // let clip = get_clipboard(formats::Bitmap).expect("Get bitmap from clipboard");
-    // let ss_vec: cVec<u8> = cVec::from(clip);
-    // let mut ss_mat = imgcodecs::imdecode(&ss_vec, imgcodecs::IMREAD_GRAYSCALE)?;
-    // let ss_mat = imgcodecs::imread("ss.png", imgcodecs::IMREAD_GRAYSCALE)?;
-
-    // match_template(img1, img2, result, method, mask)
-
     highgui::named_window("window", highgui::WINDOW_FULLSCREEN)?;
     for eq in equips {
-        for (eq_k, eq_v) in &equip_hmap {
-            let sim = 1.0 - norm2(&eq, &eq_v, NORM_L2, &no_array())? / (128.0 * 128.0);
-            println!("Againts {} is {}", eq_k, sim);
+        let (id, score) = equip_hmap
+            .iter()
+            .fold(("", 0.0), |(acc_id, acc_score), (eq_k, eq_v)| {
+                let norm = norm2(&eq, &eq_v, NORM_L2, &no_array()).unwrap_or(0.0);
+                let sim = 1.0 - norm / (128.0 * 128.0);
+                if acc_score >= sim {
+                    (acc_id, acc_score)
+                } else {
+                    (eq_k, sim)
+                }
+            });
+        if score < 0.5 {
+            continue;
         }
-        println!();
+        println!("Nearest match:\nid:{}\nscore:{}", id, score);
 
         loop {
             highgui::imshow("window", &eq)?;
