@@ -1,4 +1,3 @@
-use anyhow::Result;
 use std::collections::HashMap;
 // use clipboard_win::{formats, get_clipboard};
 use opencv::{
@@ -16,14 +15,14 @@ use rust_embed::RustEmbed;
 #[folder = "pqh/images/items/"]
 struct ItemAssets;
 
-fn main() -> Result<()> {
+fn main() {
     // let clip = get_clipboard(formats::Bitmap).expect("Get bitmap from clipboard");
     // let ss_vec: cVec<u8> = cVec::from(clip);
     // let mut ss_mat = imgcodecs::imdecode(&ss_vec, imgcodecs::IMREAD_GRAYSCALE)?;
     // let ss_mat = imgcodecs::imread("ss.png", imgcodecs::IMREAD_GRAYSCALE)?;
 
-    let ss = imgcodecs::imread("sss.png", imgcodecs::IMREAD_ANYCOLOR)?;
-    let ss_gray = imgcodecs::imread("sss.png", imgcodecs::IMREAD_GRAYSCALE)?;
+    let ss = imgcodecs::imread("sss.png", imgcodecs::IMREAD_ANYCOLOR).unwrap();
+    let ss_gray = imgcodecs::imread("sss.png", imgcodecs::IMREAD_GRAYSCALE).unwrap();
 
     let mut equip_hmap: HashMap<String, Mat> = HashMap::new();
     for filename in ItemAssets::iter() {
@@ -32,14 +31,14 @@ fn main() -> Result<()> {
             .data
             .into_owned()
             .into();
-        let mat = imgcodecs::imdecode(&file, imgcodecs::IMREAD_ANYCOLOR)?;
+        let mat = imgcodecs::imdecode(&file, imgcodecs::IMREAD_ANYCOLOR).unwrap();
         let id = filename.trim_end_matches(|c: char| !c.is_numeric());
 
         equip_hmap.insert(id.to_owned(), mat);
     }
 
     let mut thresh = Mat::default();
-    threshold(&ss_gray, &mut thresh, 130.0, 255.0, THRESH_BINARY_INV)?;
+    threshold(&ss_gray, &mut thresh, 130.0, 255.0, THRESH_BINARY_INV).unwrap();
 
     let mut cntr: cVec<cVec<Point>> = cVec::new();
     find_contours(
@@ -48,7 +47,7 @@ fn main() -> Result<()> {
         RETR_EXTERNAL,
         CHAIN_APPROX_SIMPLE,
         Point::new(0, 0),
-    )?;
+    ).unwrap();
 
     let mut rect_freq: HashMap<(i32, i32), u32> = HashMap::new();
 
@@ -72,11 +71,6 @@ fn main() -> Result<()> {
     //     // println!("{:?}", rect);
     //     rectangle(&mut ss, r, Scalar::new(0.0, 0.0, 255.0, 1.0), 2, LINE_8, 0)?;
     // }
-
-    let rect_most_freq = match max_val(&rect_freq) {
-        Some(h) => *h,
-        None => (0, 0),
-    };
 
     let equips: cVec<Mat> = rects
         .iter()
@@ -110,7 +104,7 @@ fn main() -> Result<()> {
         })
         .collect();
 
-    highgui::named_window("window", highgui::WINDOW_FULLSCREEN)?;
+    highgui::named_window("window", highgui::WINDOW_FULLSCREEN).unwrap();
     for eq in equips {
         let (id, score) = equip_hmap
             .iter()
@@ -126,26 +120,14 @@ fn main() -> Result<()> {
         if score < 0.5 {
             continue;
         }
-        println!("Nearest match:\nid:{}\nscore:{}", id, score);
+        println!("Nearest match:\nid: {}\nscore: {}", id, score);
 
         loop {
-            highgui::imshow("window", &eq)?;
-            let key = highgui::wait_key(1)?;
+            highgui::imshow("window", &eq).unwrap();
+            let key = highgui::wait_key(1).unwrap();
             if key == 113 {
                 break;
             }
         }
     }
-    Ok(())
-}
-
-// From https://stackoverflow.com/a/62526216
-fn max_val<K, V>(a_hash_map: &HashMap<K, V>) -> Option<&K>
-where
-    V: Ord,
-{
-    a_hash_map
-        .iter()
-        .max_by(|a, b| a.1.cmp(b.1))
-        .map(|(k, _v)| k)
 }

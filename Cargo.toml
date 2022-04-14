@@ -7,6 +7,5 @@ edition = "2021"
 
 [dependencies]
 clipboard-win = "4.4.1"
-opencv = "0.63.0"
-anyhow = "1.0.56"
+opencv = { version = "0.63.1", features = ["clang-runtime"] }
 rust-embed = { version = "6.3.0", features = ["include-exclude", "debug-embed"] }
