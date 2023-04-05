@@ -7,5 +7,12 @@ edition = "2021"
 
 [dependencies]
 clipboard-win = "4.4.1"
-opencv = { version = "0.63.1", features = ["clang-runtime"] }
-rust-embed = { version = "6.3.0", features = ["include-exclude", "debug-embed"] }
+opencv = "0.78.2" 
+rust-embed = "6.6.1"
+leptonica-plumbing = "1.0.1"
+tesseract-plumbing = "0.9.0"
+
+[package.metadata.vcpkg]
+git = "https://github.com/microsoft/vcpkg"
+tag = "2023.02.24"
+dependencies = ["tesseract", "leptonica"]

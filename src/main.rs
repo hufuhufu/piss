@@ -1,7 +1,10 @@
+mod ocr;
+
+use ocr::Ocr;
 use std::collections::HashMap;
 // use clipboard_win::{formats, get_clipboard};
 use opencv::{
-    core::{no_array, norm2, Point, Rect, Size, Vector as cVec, NORM_L2},
+    core::{no_array, norm2, Point, Rect, Size, Vector, NORM_L2},
     highgui, imgcodecs,
     imgproc::{
         self, bounding_rect, find_contours, resize, threshold, CHAIN_APPROX_SIMPLE, RETR_EXTERNAL,
@@ -17,7 +20,7 @@ struct ItemAssets;
 
 fn main() {
     // let clip = get_clipboard(formats::Bitmap).expect("Get bitmap from clipboard");
-    // let ss_vec: cVec<u8> = cVec::from(clip);
+    // let ss_vec: Vector<u8> = Vector::from(clip);
     // let mut ss_mat = imgcodecs::imdecode(&ss_vec, imgcodecs::IMREAD_GRAYSCALE)?;
     // let ss_mat = imgcodecs::imread("ss.png", imgcodecs::IMREAD_GRAYSCALE)?;
 
@@ -26,7 +29,7 @@ fn main() {
 
     let mut equip_hmap: HashMap<String, Mat> = HashMap::new();
     for filename in ItemAssets::iter() {
-        let file: cVec<u8> = ItemAssets::get(filename.as_ref())
+        let file: Vector<u8> = ItemAssets::get(filename.as_ref())
             .unwrap()
             .data
             .into_owned()
@@ -40,23 +43,21 @@ fn main() {
     let mut thresh = Mat::default();
     threshold(&ss_gray, &mut thresh, 130.0, 255.0, THRESH_BINARY_INV).unwrap();
 
-    let mut cntr: cVec<cVec<Point>> = cVec::new();
+    let mut cntr: Vector<Vector<Point>> = Vector::new();
     find_contours(
         &thresh,
         &mut cntr,
         RETR_EXTERNAL,
         CHAIN_APPROX_SIMPLE,
         Point::new(0, 0),
-    ).unwrap();
+    )
+    .unwrap();
 
-    let mut rect_freq: HashMap<(i32, i32), u32> = HashMap::new();
-
-    let rects: cVec<Rect> = cntr
+    let rects: Vector<Rect> = cntr
         .iter()
         .filter_map(|c| match bounding_rect(&c) {
             Ok(r) => {
                 if r.width > 50 && r.height > 50 {
-                    *rect_freq.entry((r.width, r.height)).or_insert(0) += 1;
                     Some(r)
                 } else {
                     None
@@ -72,7 +73,7 @@ fn main() {
     //     rectangle(&mut ss, r, Scalar::new(0.0, 0.0, 255.0, 1.0), 2, LINE_8, 0)?;
     // }
 
-    let equips: cVec<Mat> = rects
+    let equips: Vector<Mat> = rects
         .iter()
         .filter_map(|rec| {
             if let Ok(m) = Mat::roi(&ss, rec) {
@@ -104,6 +105,8 @@ fn main() {
         })
         .collect();
 
+    let mut ocr = Ocr::init();
+
     highgui::named_window("window", highgui::WINDOW_FULLSCREEN).unwrap();
     for eq in equips {
         let (id, score) = equip_hmap
@@ -120,12 +123,25 @@ fn main() {
         if score < 0.5 {
             continue;
         }
-        println!("Nearest match:\nid: {}\nscore: {}", id, score);
+
+        let crop_rect = Rect::from_points((9, 99).into(), (124, 119).into());
+        let cropped_eq = Mat::roi(&eq.clone(), crop_rect).unwrap();
+
+        let amount = ocr.get_utf8_text_from_mat(&cropped_eq)
+        .matches(char::is_numeric)
+        .collect::<Vec<&str>>()
+        .join("");
+
+        println!(
+            "Nearest match:\nid: {}\nscore: {}\namount: {:?}",
+            id, score, amount
+        );
 
         loop {
             highgui::imshow("window", &eq).unwrap();
             let key = highgui::wait_key(1).unwrap();
             if key == 113 {
+                // Press q
                 break;
             }
         }
