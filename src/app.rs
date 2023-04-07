@@ -1,5 +1,7 @@
 use native_dialog::FileDialog;
 
+use crate::scanner::scan_file;
+
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct App {
@@ -53,7 +55,7 @@ impl eframe::App for App {
                     .unwrap();
 
                 for path in filepaths {
-                    println!("{:#?}", path);
+                    scan_file(path.to_str().unwrap());
                 }
             }
 
