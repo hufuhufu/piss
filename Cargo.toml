@@ -14,6 +14,7 @@ tesseract-plumbing = "0.9.0"
 eframe = { version = "0.21.3", default-features = false, features = ["default_fonts", "glow", "persistence"] }
 egui = "0.21.0"
 serde = { version = "1.0.159", features = ["derive"] }
+native-dialog = { version = "0.6.3", features = ["windows_dpi_awareness", "windows_visual_styles"] }
 
 [package.metadata.vcpkg]
 git = "https://github.com/microsoft/vcpkg"

@@ -1,3 +1,5 @@
+use native_dialog::FileDialog;
+
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct App {
@@ -45,11 +47,18 @@ impl eframe::App for App {
             let scan_file_button = ui.button("Scan file(s)")
                 .on_hover_text("Scan inventory from screenshot image files.");
             if scan_file_button.clicked() {
-                // TODO: Show file dialog
+                let filepaths = FileDialog::new()
+                    .add_filter("JPEG Image", &["jpg", "jpeg", "png"])
+                    .show_open_multiple_file()
+                    .unwrap();
+
+                for path in filepaths {
+                    println!("{:#?}", path);
+                }
             }
 
             let scan_clipboard_button = ui.button("From clipboard")
-                .on_hover_text("Scan inventory from clipboard.\nTip: You can use Win+Shift+S to take a screenshot and automatically put it in your clipboard.");
+                .on_hover_text("TODO:\nScan inventory from clipboard.\nTip: You can use Win+Shift+S to take a screenshot and automatically put it in your clipboard.");
             if scan_clipboard_button.clicked() {
                 // TODO: Get image from the clipboard
             }
