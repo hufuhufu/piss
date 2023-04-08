@@ -1,126 +1,134 @@
-use crate::ocr::Ocr;
-use crate::ItemAssets;
+use crate::{assets::ItemAssets, ocr::Ocr};
 
-use std::collections::HashMap;
-// use clipboard_win::{formats, get_clipboard};
 use opencv::{
     core::{no_array, norm2, Point, Rect, Size, Vector, NORM_L2},
-    highgui, imgcodecs,
-    imgproc::{
-        self, bounding_rect, find_contours, resize, threshold, CHAIN_APPROX_SIMPLE, RETR_EXTERNAL,
-        THRESH_BINARY_INV,
-    },
+    imgcodecs, imgproc,
     prelude::*,
 };
 
-pub fn scan() {
+fn threshold(src: &Mat) -> Mat {
+    let mut thresh = Mat::default();
+    imgproc::threshold(src, &mut thresh, 130.0, 255.0, imgproc::THRESH_BINARY_INV).unwrap();
+    thresh
+}
+
+fn find_contours(threshold: &Mat) -> Vector<Vector<Point>> {
+    let mut contours: Vector<Vector<Point>> = Vector::new();
+    imgproc::find_contours(
+        &threshold,
+        &mut contours,
+        imgproc::RETR_EXTERNAL,
+        imgproc::CHAIN_APPROX_SIMPLE,
+        Point::new(0, 0),
+    )
+    .unwrap();
+    contours
+}
+
+fn bounding_rect_from_contour(contour: Vector<Point>) -> Option<Rect> {
+    match imgproc::bounding_rect(&contour) {
+        Ok(r) => {
+            if r.width > 50 && r.height > 50 {
+                Some(r)
+            } else {
+                None
+            }
+        }
+        Err(_) => None,
+    }
+}
+
+fn crop_image_with_rect(image: &Mat) -> impl FnMut(Rect) -> Option<Mat> + '_ {
+    |rect: Rect| {
+        let roi = Mat::roi(image, rect);
+        if let Ok(roi) = roi {
+            Some(roi)
+        } else {
+            None
+        }
+    }
+}
+
+fn try_resize(mat: Mat) -> Mat {
+    if mat.cols() == 128 || mat.rows() == 128 {
+        return mat;
+    }
+
+    let mut resized = Mat::default();
+    let result = imgproc::resize(
+        &mat,
+        &mut resized,
+        Size::new(128, 128),
+        0.0,
+        0.0,
+        imgproc::INTER_CUBIC,
+    );
+    if result.is_ok() {
+        resized
+    } else {
+        mat
+    }
+}
+
+// omg what the heck is this function return
+fn compare_equip<'a, 'b>(
+    equip: &Mat,
+) -> impl FnMut((&'a str, f64), (&'b String, &'b Mat)) -> (&'a str, f64) + '_
+where
+    'b: 'a,
+{
+    |(acc_id, acc_score): (&'a str, f64),
+     (equip_id, equip_mat): (&'b String, &'b Mat)|
+     -> (&'a str, f64) {
+        // Find similarity in two images with NORM_L2
+        // https://stackoverflow.com/a/19708947/6466576
+        let norm = norm2(equip, &equip_mat, NORM_L2, &no_array()).unwrap_or(0.0);
+        let similarity = 1.0 - norm / (128.0 * 128.0);
+        if acc_score >= similarity {
+            (acc_id, acc_score)
+        } else {
+            (equip_id, similarity)
+        }
+    }
+}
+
+pub fn scan_file(filename: &str) {
     // let clip = get_clipboard(formats::Bitmap).expect("Get bitmap from clipboard");
     // let ss_vec: Vector<u8> = Vector::from(clip);
     // let mut ss_mat = imgcodecs::imdecode(&ss_vec, imgcodecs::IMREAD_GRAYSCALE)?;
     // let ss_mat = imgcodecs::imread("ss.png", imgcodecs::IMREAD_GRAYSCALE)?;
 
-    let ss = imgcodecs::imread("sss.png", imgcodecs::IMREAD_ANYCOLOR).unwrap();
-    let ss_gray = imgcodecs::imread("sss.png", imgcodecs::IMREAD_GRAYSCALE).unwrap();
+    let img_color = imgcodecs::imread(filename, imgcodecs::IMREAD_ANYCOLOR).unwrap();
+    let img_gray = imgcodecs::imread(filename, imgcodecs::IMREAD_GRAYSCALE).unwrap();
 
-    let mut equip_hmap: HashMap<String, Mat> = HashMap::new();
-    for filename in ItemAssets::iter() {
-        let file: Vector<u8> = ItemAssets::get(filename.as_ref())
-            .unwrap()
-            .data
-            .into_owned()
-            .into();
-        let mat = imgcodecs::imdecode(&file, imgcodecs::IMREAD_ANYCOLOR).unwrap();
-        let id = filename.trim_end_matches(|c: char| !c.is_numeric());
+    let item_assets = ItemAssets::global();
+    let thresh = threshold(&img_gray);
+    let contours = find_contours(&thresh);
 
-        equip_hmap.insert(id.to_owned(), mat);
-    }
-
-    let mut thresh = Mat::default();
-    threshold(&ss_gray, &mut thresh, 130.0, 255.0, THRESH_BINARY_INV).unwrap();
-
-    let mut cntr: Vector<Vector<Point>> = Vector::new();
-    find_contours(
-        &thresh,
-        &mut cntr,
-        RETR_EXTERNAL,
-        CHAIN_APPROX_SIMPLE,
-        Point::new(0, 0),
-    )
-    .unwrap();
-
-    let rects: Vector<Rect> = cntr
+    let rects: Vector<Rect> = contours
         .iter()
-        .filter_map(|c| match bounding_rect(&c) {
-            Ok(r) => {
-                if r.width > 50 && r.height > 50 {
-                    Some(r)
-                } else {
-                    None
-                }
-            }
-            Err(_) => None,
-        })
+        .filter_map(bounding_rect_from_contour)
         .collect();
-
-    // For debugging purpose. Draws all bounding rectangles.
-    // for r in &rects {
-    //     // println!("{:?}", rect);
-    //     rectangle(&mut ss, r, Scalar::new(0.0, 0.0, 255.0, 1.0), 2, LINE_8, 0)?;
-    // }
 
     let equips: Vector<Mat> = rects
         .iter()
-        .filter_map(|rec| {
-            if let Ok(m) = Mat::roi(&ss, rec) {
-                Some(m)
-            } else {
-                None
-            }
-        })
-        .map(|mat| {
-            if mat.cols() != 128 || mat.rows() != 128 {
-                let mut rm = Mat::default();
-                if resize(
-                    &mat,
-                    &mut rm,
-                    Size::new(128, 128),
-                    0.0,
-                    0.0,
-                    imgproc::INTER_CUBIC,
-                )
-                .is_ok()
-                {
-                    rm
-                } else {
-                    mat
-                }
-            } else {
-                mat
-            }
-        })
+        .filter_map(crop_image_with_rect(&img_color))
+        .map(try_resize)
         .collect();
 
     let mut ocr = Ocr::init();
 
-    highgui::named_window("window", highgui::WINDOW_FULLSCREEN).unwrap();
-    for eq in equips {
-        let (id, score) = equip_hmap
-            .iter()
-            .fold(("", 0.0), |(acc_id, acc_score), (eq_k, eq_v)| {
-                let norm = norm2(&eq, &eq_v, NORM_L2, &no_array()).unwrap_or(0.0);
-                let sim = 1.0 - norm / (128.0 * 128.0);
-                if acc_score >= sim {
-                    (acc_id, acc_score)
-                } else {
-                    (eq_k, sim)
-                }
-            });
+    for equip in equips {
+        let items = item_assets.assets.lock().unwrap();
+        let (id, score) = items.iter().fold(("", 0.0), compare_equip(&equip));
         if score < 0.5 {
             continue;
         }
 
+        // TODO: Need to take into account that PriconneTL patch has slightly bigger font.
+        // Maybe create option like a PriconneTL toggle? Or customizeable crop rect for ocr?
         let crop_rect = Rect::from_points((9, 99).into(), (124, 119).into());
-        let cropped_eq = Mat::roi(&eq.clone(), crop_rect).unwrap();
+        let cropped_eq = Mat::roi(&equip.clone(), crop_rect).unwrap();
 
         let amount = ocr
             .get_utf8_text_from_mat(&cropped_eq)
@@ -132,14 +140,5 @@ pub fn scan() {
             "Nearest match:\nid: {}\nscore: {}\namount: {:?}",
             id, score, amount
         );
-
-        loop {
-            highgui::imshow("window", &eq).unwrap();
-            let key = highgui::wait_key(1).unwrap();
-            if key == 113 {
-                // Press q
-                break;
-            }
-        }
     }
 }
