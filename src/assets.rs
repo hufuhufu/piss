@@ -7,7 +7,7 @@ use rust_embed::RustEmbed;
 use std::{collections::HashMap, sync::Mutex};
 
 #[derive(RustEmbed)]
-#[folder = "pqh/images/items/"]
+#[folder = "pqh/static/images/items/"]
 struct ItemAssetsEmbed;
 
 #[derive(Debug)]
